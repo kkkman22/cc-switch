@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isWindows, isLinux } from "@/lib/platform";
 
 interface FullScreenPanelProps {
   isOpen: boolean;
@@ -12,7 +13,7 @@ interface FullScreenPanelProps {
   footer?: React.ReactNode;
 }
 
-const DRAG_BAR_HEIGHT = 28; // px - match App.tsx
+const DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28; // px - match App.tsx
 const HEADER_HEIGHT = 64; // px - match App.tsx
 
 /**
@@ -71,7 +72,7 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
             }
           >
             <div
-              className="mx-auto max-w-[56rem] px-6 w-full flex items-center gap-4"
+              className="px-6 w-full flex items-center gap-4"
               data-tauri-drag-region
               style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
             >
@@ -93,7 +94,7 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto scroll-overlay">
-            <div className="mx-auto max-w-[56rem] px-6 py-6 space-y-6 w-full">
+            <div className="px-6 py-6 space-y-6 w-full">
               {children}
             </div>
           </div>
@@ -104,7 +105,7 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
               className="flex-shrink-0 py-4 border-t border-border-default"
               style={{ backgroundColor: "hsl(var(--background))" }}
             >
-              <div className="mx-auto max-w-[56rem] px-6 flex items-center justify-end gap-3">
+              <div className="px-6 flex items-center justify-end gap-3">
                 {footer}
               </div>
             </div>

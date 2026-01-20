@@ -84,6 +84,10 @@
     "addClaudeProvider": "添加 Claude Code 供应商",
     "addCodexProvider": "添加 Codex 供应商",
     "addGeminiProvider": "添加 Gemini 供应商",
+    "addOpenCodeProvider": "添加 OpenCode 供应商",
+    "addToConfig": "添加",
+    "removeFromConfig": "移除",
+    "inConfig": "已添加",
     "addProviderHint": "填写信息后即可在列表中快速切换供应商。",
     "editClaudeProvider": "编辑 Claude Code 供应商",
     "editCodexProvider": "编辑 Codex 供应商",
@@ -133,6 +137,8 @@
     "providerSaved": "供应商配置已保存",
     "providerDeleted": "供应商删除成功",
     "switchSuccess": "切换成功！",
+    "addToConfigSuccess": "已添加到配置",
+    "removeFromConfigSuccess": "已从配置移除",
     "switchFailedTitle": "切换失败",
     "switchFailed": "切换失败：{{error}}",
     "autoImported": "已从现有配置创建默认供应商",
@@ -153,7 +159,9 @@
   },
   "confirm": {
     "deleteProvider": "删除供应商",
-    "deleteProviderMessage": "确定要删除供应商 \"{{name}}\" 吗？此操作无法撤销。"
+    "deleteProviderMessage": "确定要删除供应商 \"{{name}}\" 吗？此操作无法撤销。",
+    "removeProvider": "移除供应商",
+    "removeProviderMessage": "确定要从配置中移除供应商 \"{{name}}\" 吗？\n\n移除后该供应商将不再生效，但配置数据会保留在 CC Switch 中，您可以随时重新添加。"
   },
   "settings": {
     "title": "设置",
@@ -183,9 +191,23 @@
         "title": "成本定价",
         "description": "管理各模型 Token 计费规则"
       },
+      "globalProxy": {
+        "title": "全局出站代理",
+        "description": "配置 CC Switch 访问外部 API 时使用的代理"
+      },
       "data": {
         "title": "数据管理",
         "description": "导入导出配置与备份恢复"
+      },
+      "rectifier": {
+        "title": "整流器",
+        "description": "自动修复 API 请求中的兼容性问题",
+        "enabled": "启用整流器",
+        "enabledDescription": "总开关，关闭后所有整流功能将被禁用",
+        "requestGroup": "请求整流",
+        "responseGroup": "响应整流",
+        "thinkingSignature": "Thinking 签名整流",
+        "thinkingSignatureDescription": "自动修复 Claude API 中因 thinking 签名校验失败导致的请求错误"
       }
     },
     "language": "界面语言",
@@ -271,12 +293,27 @@
     "restartLater": "稍后重启",
     "restartFailed": "应用重启失败，请手动关闭后重新打开。",
     "devModeRestartHint": "开发模式下不支持自动重启，请手动重新启动应用。",
-    "saving": "正在保存..."
+    "saving": "正在保存...",
+    "globalProxy": {
+      "label": "全局代理",
+      "hint": "代理所有请求（API、Skills 下载等）。留空表示直连。",
+      "username": "用户名（可选）",
+      "password": "密码（可选）",
+      "test": "测试连接",
+      "scan": "扫描本地代理",
+      "clear": "清除",
+      "scanFailed": "扫描失败：{{error}}",
+      "saved": "代理设置已保存",
+      "saveFailed": "保存失败：{{error}}",
+      "testSuccess": "连接成功！延迟 {{latency}}ms",
+      "testFailed": "连接失败：{{error}}"
+    }
   },
   "apps": {
     "claude": "Claude Code",
     "codex": "Codex",
-    "gemini": "Gemini"
+    "gemini": "Gemini",
+    "opencode": "OpenCode"
   },
   "console": {
     "providerSwitchReceived": "收到供应商切换事件:",
@@ -324,7 +361,8 @@
       "minimax_cn": "MiniMax Coding Plan 特惠，Starter 套餐 9.9 元起",
       "minimax_en": "MiniMax Coding Plan 黑五特惠，Starter 套餐现仅 $2/月（2折优惠！）",
       "dmxapi": "Claude Code 专属模型 3.4 折优惠进行中！",
-      "cubence": "Cubence 是 CC Switch 的官方合作伙伴，使用此链接注册并在充值时填写 \"CCSWITCH\" 优惠码，每次充值均可享受9折优惠"
+      "cubence": "Cubence 是 CC Switch 的官方合作伙伴，使用此链接注册并在充值时填写 \"CCSWITCH\" 优惠码，每次充值均可享受9折优惠",
+      "aigocode": "AIGoCode 是 CC Switch 的官方合作伙伴，使用此链接注册首次充值时可以获得10%额度奖励！"
     },
     "parameterConfig": "参数配置 - {{name}} *",
     "mainModel": "主模型 (可选)",
@@ -425,6 +463,36 @@
     "noCommonConfigToApply": "通用配置片段为空或没有可写入的内容",
     "configMergeFailed": "配置合并失败: {{error}}",
     "configReplaceFailed": "配置替换失败: {{error}}"
+  },
+  "opencode": {
+    "npmPackage": "接口格式",
+    "selectPackage": "选择接口格式",
+    "npmPackageHint": "选择 AI 服务的 API 接口格式",
+    "baseUrl": "Base URL",
+    "baseUrlHint": "自定义 API 端点地址",
+    "models": "模型配置",
+    "modelsHint": "配置可用的模型及其显示名称",
+    "addModel": "添加模型",
+    "modelId": "模型 ID",
+    "modelName": "显示名称",
+    "noModels": "暂无模型配置",
+    "providerKey": "供应商标识",
+    "providerKeyPlaceholder": "my-provider",
+    "providerKeyHint": "配置文件中的唯一标识符，创建后无法修改，只能使用小写字母、数字和连字符",
+    "providerKeyRequired": "请填写供应商标识",
+    "providerKeyDuplicate": "此标识已被使用，请更换",
+    "providerKeyInvalid": "标识格式无效，只能使用小写字母、数字和连字符",
+    "extraOptions": "额外选项",
+    "extraOptionsHint": "配置额外的 SDK 选项，如 timeout、setCacheKey 等。值会自动解析类型（数字、布尔值等）。",
+    "addExtraOption": "添加",
+    "extraOptionKey": "键名",
+    "extraOptionValue": "值",
+    "extraOptionKeyPlaceholder": "timeout",
+    "extraOptionValuePlaceholder": "600000",
+    "noExtraOptions": "暂无额外选项",
+    "noModelOptions": "模型选项，点击 + 添加",
+    "modelOptionKeyPlaceholder": "provider",
+    "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}"
   },
   "providerPreset": {
     "label": "预设供应商",
@@ -555,6 +623,7 @@
     "testFailed": "测试失败",
     "formatSuccess": "格式化成功",
     "formatFailed": "格式化失败",
+    "supportedVariables": "支持的变量",
     "variablesHint": "支持变量: {{apiKey}}, {{baseUrl}} | extractor 函数接收 API 响应的 JSON 对象",
     "scriptConfig": "请求配置",
     "extractorCode": "提取器代码",
@@ -604,7 +673,8 @@
       "apps": {
         "claude": "Claude",
         "codex": "Codex",
-        "gemini": "Gemini"
+        "gemini": "Gemini",
+        "opencode": "OpenCode"
       }
     },
     "userLevelPath": "用户级 MCP 配置路径",
@@ -912,7 +982,8 @@
     "apps": {
       "claude": "Claude",
       "codex": "Codex",
-      "gemini": "Gemini"
+      "gemini": "Gemini",
+      "opencode": "OpenCode"
     }
   },
   "deeplink": {
@@ -957,6 +1028,7 @@
     "configDetails": "配置详情",
     "configUrl": "配置文件 URL",
     "configMergeError": "合并配置文件失败",
+    "primaryEndpoint": "主",
     "mcp": {
       "title": "批量导入 MCP Servers",
       "targetApps": "目标应用",
@@ -1106,7 +1178,12 @@
       "toast": {
         "saved": "代理配置已保存",
         "saveFailed": "保存失败: {{error}}"
-      }
+      },
+      "invalidPort": "端口无效，请输入 1024-65535 之间的数字",
+      "invalidAddress": "地址无效，请输入有效的 IP 地址（如 127.0.0.1）或 localhost",
+      "configSaved": "代理配置已保存",
+      "configSaveFailed": "保存配置失败",
+      "restartRequired": "修改地址或端口后需要重启代理服务才能生效"
     },
     "switchFailed": "切换失败: {{error}}",
     "failover": {
@@ -1133,6 +1210,7 @@
       "info": "当故障转移队列中配置了多个供应商时，系统会在请求失败时按优先级顺序依次尝试。当某个供应商连续失败达到阈值时，熔断器会打开并在一段时间内跳过该供应商。",
       "configSaved": "自动故障转移配置已保存",
       "configSaveFailed": "保存失败",
+      "validationFailed": "以下字段超出有效范围: {{fields}}",
       "retrySettings": "重试与超时设置",
       "failureThreshold": "失败阈值",
       "failureThresholdHint": "连续失败多少次后打开熔断器（建议: 3-10）",
@@ -1166,7 +1244,8 @@
     "checkParams": "检查参数",
     "timeout": "超时时间（秒）",
     "maxRetries": "最大重试次数",
-    "degradedThreshold": "降级阈值（毫秒）"
+    "degradedThreshold": "降级阈值（毫秒）",
+    "testPrompt": "检查提示词"
   },
   "proxyConfig": {
     "proxyEnabled": "代理总开关",
@@ -1183,6 +1262,16 @@
     "streamingFirstByte": "流式首字节超时",
     "streamingIdle": "流式静默超时",
     "nonStreaming": "非流式超时"
+  },
+  "circuitBreaker": {
+    "failureThreshold": "失败阈值",
+    "successThreshold": "成功阈值",
+    "timeoutSeconds": "超时时间",
+    "errorRateThreshold": "错误率阈值",
+    "minRequests": "最小请求数",
+    "validationFailed": "以下字段超出有效范围: {{fields}}",
+    "configSaved": "熔断器配置已保存",
+    "saveFailed": "保存失败"
   },
   "universalProvider": {
     "title": "统一供应商",

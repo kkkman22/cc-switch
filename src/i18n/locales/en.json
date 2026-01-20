@@ -84,6 +84,10 @@
     "addClaudeProvider": "Add Claude Code Provider",
     "addCodexProvider": "Add Codex Provider",
     "addGeminiProvider": "Add Gemini Provider",
+    "addOpenCodeProvider": "Add OpenCode Provider",
+    "addToConfig": "Add",
+    "removeFromConfig": "Remove",
+    "inConfig": "Added",
     "addProviderHint": "Fill in the information to quickly switch providers in the list.",
     "editClaudeProvider": "Edit Claude Code Provider",
     "editCodexProvider": "Edit Codex Provider",
@@ -133,6 +137,8 @@
     "providerSaved": "Provider configuration saved",
     "providerDeleted": "Provider deleted successfully",
     "switchSuccess": "Switch successful!",
+    "addToConfigSuccess": "Added to config",
+    "removeFromConfigSuccess": "Removed from config",
     "switchFailedTitle": "Switch failed",
     "switchFailed": "Switch failed: {{error}}",
     "autoImported": "Default provider created from existing configuration",
@@ -153,7 +159,9 @@
   },
   "confirm": {
     "deleteProvider": "Delete Provider",
-    "deleteProviderMessage": "Are you sure you want to delete provider \"{{name}}\"? This action cannot be undone."
+    "deleteProviderMessage": "Are you sure you want to delete provider \"{{name}}\"? This action cannot be undone.",
+    "removeProvider": "Remove Provider",
+    "removeProviderMessage": "Are you sure you want to remove provider \"{{name}}\" from the configuration?\n\nAfter removal, this provider will no longer be active, but the configuration data will be retained in CC Switch. You can re-add it at any time."
   },
   "settings": {
     "title": "Settings",
@@ -183,9 +191,23 @@
         "title": "Cost Pricing",
         "description": "Manage token pricing rules for each model"
       },
+      "globalProxy": {
+        "title": "Global Outbound Proxy",
+        "description": "Configure proxy for CC Switch to access external APIs"
+      },
       "data": {
         "title": "Data Management",
         "description": "Import/export configurations and backup/restore"
+      },
+      "rectifier": {
+        "title": "Rectifier",
+        "description": "Automatically fix API request compatibility issues",
+        "enabled": "Enable Rectifier",
+        "enabledDescription": "Master switch, all rectification features will be disabled when turned off",
+        "requestGroup": "Request Rectification",
+        "responseGroup": "Response Rectification",
+        "thinkingSignature": "Thinking Signature Rectification",
+        "thinkingSignatureDescription": "Automatically fix Claude API errors caused by thinking signature validation failures"
       }
     },
     "language": "Language",
@@ -271,12 +293,27 @@
     "restartLater": "Restart Later",
     "restartFailed": "Application restart failed, please manually close and reopen.",
     "devModeRestartHint": "Dev Mode: Automatic restart not supported, please manually restart the application.",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "globalProxy": {
+      "label": "Global Proxy",
+      "hint": "Proxy all requests (API, Skills download, etc.). Leave empty for direct connection.",
+      "username": "Username (optional)",
+      "password": "Password (optional)",
+      "test": "Test Connection",
+      "scan": "Scan Local Proxies",
+      "clear": "Clear",
+      "scanFailed": "Scan failed: {{error}}",
+      "saved": "Proxy settings saved",
+      "saveFailed": "Save failed: {{error}}",
+      "testSuccess": "Connected! Latency {{latency}}ms",
+      "testFailed": "Connection failed: {{error}}"
+    }
   },
   "apps": {
     "claude": "Claude Code",
     "codex": "Codex",
-    "gemini": "Gemini"
+    "gemini": "Gemini",
+    "opencode": "OpenCode"
   },
   "console": {
     "providerSwitchReceived": "Received provider switch event:",
@@ -324,7 +361,8 @@
       "minimax_cn": "MiniMax Coding Plan Special Offer, Starter from ¥9.9",
       "minimax_en": "MiniMax Coding Plan Black Friday, Starter is now $2/mo (80% OFF!)",
       "dmxapi": "Claude Code exclusive model 66% OFF now!",
-      "cubence": "Cubence is an official partner of CC Switch. Register using this link and enter \"CCSWITCH\" promo code during recharge to get 10% off every top-up"
+      "cubence": "Cubence is an official partner of CC Switch. Register using this link and enter \"CCSWITCH\" promo code during recharge to get 10% off every top-up",
+      "aigocode": "AIGoCode is an official partner of CC Switch. Register using this link and get 10% bonus credit on your first top-up!"
     },
     "parameterConfig": "Parameter Config - {{name}} *",
     "mainModel": "Main Model (optional)",
@@ -425,6 +463,36 @@
     "noCommonConfigToApply": "Common config snippet is empty or has no applicable entries",
     "configMergeFailed": "Config merge failed: {{error}}",
     "configReplaceFailed": "Config replace failed: {{error}}"
+  },
+  "opencode": {
+    "npmPackage": "API Format",
+    "selectPackage": "Select API format",
+    "npmPackageHint": "Select the API format for the AI service",
+    "baseUrl": "Base URL",
+    "baseUrlHint": "Custom API endpoint URL",
+    "models": "Models",
+    "modelsHint": "Configure available models and their display names",
+    "addModel": "Add Model",
+    "modelId": "Model ID",
+    "modelName": "Display Name",
+    "noModels": "No models configured",
+    "providerKey": "Provider Key",
+    "providerKeyPlaceholder": "my-provider",
+    "providerKeyHint": "Unique identifier in config file. Cannot be changed after creation. Use lowercase letters, numbers, and hyphens only.",
+    "providerKeyRequired": "Provider key is required",
+    "providerKeyDuplicate": "This key is already in use",
+    "providerKeyInvalid": "Invalid format. Use lowercase letters, numbers, and hyphens only.",
+    "extraOptions": "Extra Options",
+    "extraOptionsHint": "Configure extra SDK options like timeout, setCacheKey, etc. Values are auto-parsed to appropriate types (number, boolean, etc.).",
+    "addExtraOption": "Add",
+    "extraOptionKey": "Key",
+    "extraOptionValue": "Value",
+    "extraOptionKeyPlaceholder": "timeout",
+    "extraOptionValuePlaceholder": "600000",
+    "noExtraOptions": "No extra options configured",
+    "noModelOptions": "Model options, click + to add",
+    "modelOptionKeyPlaceholder": "provider",
+    "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}"
   },
   "providerPreset": {
     "label": "Provider Preset",
@@ -555,6 +623,7 @@
     "testFailed": "Test failed",
     "formatSuccess": "Format successful",
     "formatFailed": "Format failed",
+    "supportedVariables": "Supported Variables",
     "variablesHint": "Supported variables: {{apiKey}}, {{baseUrl}} | extractor function receives API response JSON object",
     "scriptConfig": "Request configuration",
     "extractorCode": "Extractor code",
@@ -604,7 +673,8 @@
       "apps": {
         "claude": "Claude",
         "codex": "Codex",
-        "gemini": "Gemini"
+        "gemini": "Gemini",
+        "opencode": "OpenCode"
       }
     },
     "userLevelPath": "User-level MCP path",
@@ -912,7 +982,8 @@
     "apps": {
       "claude": "Claude",
       "codex": "Codex",
-      "gemini": "Gemini"
+      "gemini": "Gemini",
+      "opencode": "OpenCode"
     }
   },
   "deeplink": {
@@ -957,6 +1028,7 @@
     "configDetails": "Config Details",
     "configUrl": "Config File URL",
     "configMergeError": "Failed to merge configuration file",
+    "primaryEndpoint": "Primary",
     "mcp": {
       "title": "Batch Import MCP Servers",
       "targetApps": "Target Apps",
@@ -1106,7 +1178,12 @@
       "toast": {
         "saved": "Proxy configuration saved",
         "saveFailed": "Save failed: {{error}}"
-      }
+      },
+      "invalidPort": "Invalid port, please enter a number between 1024-65535",
+      "invalidAddress": "Invalid address, please enter a valid IP address (e.g. 127.0.0.1) or localhost",
+      "configSaved": "Proxy configuration saved",
+      "configSaveFailed": "Failed to save configuration",
+      "restartRequired": "Restart proxy service for address or port changes to take effect"
     },
     "switchFailed": "Switch failed: {{error}}",
     "failover": {
@@ -1133,6 +1210,7 @@
       "info": "When the failover queue has multiple providers, the system will try them in priority order when requests fail. When a provider reaches the consecutive failure threshold, the circuit breaker will open and skip it temporarily.",
       "configSaved": "Auto failover config saved",
       "configSaveFailed": "Failed to save",
+      "validationFailed": "The following fields are out of valid range: {{fields}}",
       "retrySettings": "Retry & Timeout Settings",
       "failureThreshold": "Failure Threshold",
       "failureThresholdHint": "Open circuit breaker after this many consecutive failures (recommended: 3-10)",
@@ -1166,7 +1244,8 @@
     "checkParams": "Check Parameters",
     "timeout": "Timeout (seconds)",
     "maxRetries": "Max Retries",
-    "degradedThreshold": "Degraded Threshold (ms)"
+    "degradedThreshold": "Degraded Threshold (ms)",
+    "testPrompt": "Test Prompt"
   },
   "proxyConfig": {
     "proxyEnabled": "Proxy Enabled",
@@ -1183,6 +1262,16 @@
     "streamingFirstByte": "Streaming First Byte Timeout",
     "streamingIdle": "Streaming Idle Timeout",
     "nonStreaming": "Non-Streaming Timeout"
+  },
+  "circuitBreaker": {
+    "failureThreshold": "Failure Threshold",
+    "successThreshold": "Success Threshold",
+    "timeoutSeconds": "Timeout (seconds)",
+    "errorRateThreshold": "Error Rate Threshold",
+    "minRequests": "Min Requests",
+    "validationFailed": "The following fields are out of valid range: {{fields}}",
+    "configSaved": "Circuit breaker config saved",
+    "saveFailed": "Failed to save"
   },
   "universalProvider": {
     "title": "Universal Provider",
