@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 use rusqlite::{params, Connection};
 use serde_json::json;
 use std::collections::HashMap;
+use tempfile::NamedTempFile;
 
 const LEGACY_SCHEMA_SQL: &str = r#"
     CREATE TABLE providers (
@@ -151,7 +152,7 @@ fn normalize_default(default: &Option<String>) -> Option<String> {
 }
 
 #[test]
-fn migration_sets_user_version_when_missing() {
+fn schema_migration_sets_user_version_when_missing() {
     let conn = Connection::open_in_memory().expect("open memory db");
 
     Database::create_tables_on_conn(&conn).expect("create tables");
@@ -169,7 +170,7 @@ fn migration_sets_user_version_when_missing() {
 }
 
 #[test]
-fn migration_rejects_future_version() {
+fn schema_migration_rejects_future_version() {
     let conn = Connection::open_in_memory().expect("open memory db");
     Database::create_tables_on_conn(&conn).expect("create tables");
     Database::set_user_version(&conn, SCHEMA_VERSION + 1).expect("set future version");
@@ -183,7 +184,7 @@ fn migration_rejects_future_version() {
 }
 
 #[test]
-fn migration_adds_missing_columns_for_providers() {
+fn schema_migration_adds_missing_columns_for_providers() {
     let conn = Connection::open_in_memory().expect("open memory db");
 
     // 创建旧版 providers 表，缺少新增列
@@ -224,7 +225,7 @@ fn migration_adds_missing_columns_for_providers() {
 }
 
 #[test]
-fn migration_aligns_column_defaults_and_types() {
+fn schema_migration_aligns_column_defaults_and_types() {
     let conn = Connection::open_in_memory().expect("open memory db");
     conn.execute_batch(LEGACY_SCHEMA_SQL)
         .expect("seed old schema");
@@ -268,7 +269,84 @@ fn migration_aligns_column_defaults_and_types() {
 }
 
 #[test]
-fn create_tables_repairs_legacy_proxy_config_singleton_to_per_app() {
+fn schema_create_tables_include_pricing_model_columns() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    Database::create_tables_on_conn(&conn).expect("create tables");
+
+    let multiplier = get_column_info(&conn, "proxy_config", "default_cost_multiplier");
+    assert_eq!(multiplier.r#type, "TEXT");
+    assert_eq!(multiplier.notnull, 1);
+    assert_eq!(normalize_default(&multiplier.default).as_deref(), Some("1"));
+
+    let pricing_source = get_column_info(&conn, "proxy_config", "pricing_model_source");
+    assert_eq!(pricing_source.r#type, "TEXT");
+    assert_eq!(pricing_source.notnull, 1);
+    assert_eq!(
+        normalize_default(&pricing_source.default).as_deref(),
+        Some("response")
+    );
+
+    let request_model = get_column_info(&conn, "proxy_request_logs", "request_model");
+    assert_eq!(request_model.r#type, "TEXT");
+    assert_eq!(request_model.notnull, 0);
+}
+
+#[test]
+fn schema_migration_v4_adds_pricing_model_columns() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    conn.execute_batch(
+        r#"
+        CREATE TABLE providers (
+            id TEXT NOT NULL,
+            app_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            settings_config TEXT NOT NULL DEFAULT '{}',
+            meta TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY (id, app_type)
+        );
+        CREATE TABLE proxy_config (app_type TEXT PRIMARY KEY);
+        CREATE TABLE proxy_request_logs (request_id TEXT PRIMARY KEY, model TEXT NOT NULL);
+        CREATE TABLE mcp_servers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            server_config TEXT NOT NULL,
+            enabled_claude INTEGER NOT NULL DEFAULT 0,
+            enabled_codex INTEGER NOT NULL DEFAULT 0,
+            enabled_gemini INTEGER NOT NULL DEFAULT 0,
+            enabled_opencode INTEGER NOT NULL DEFAULT 0
+        );
+        "#,
+    )
+    .expect("seed v4 schema");
+
+    Database::set_user_version(&conn, 4).expect("set user_version=4");
+    Database::apply_schema_migrations_on_conn(&conn).expect("apply migrations");
+
+    let multiplier = get_column_info(&conn, "proxy_config", "default_cost_multiplier");
+    assert_eq!(multiplier.r#type, "TEXT");
+    assert_eq!(multiplier.notnull, 1);
+    assert_eq!(normalize_default(&multiplier.default).as_deref(), Some("1"));
+
+    let pricing_source = get_column_info(&conn, "proxy_config", "pricing_model_source");
+    assert_eq!(pricing_source.r#type, "TEXT");
+    assert_eq!(pricing_source.notnull, 1);
+    assert_eq!(
+        normalize_default(&pricing_source.default).as_deref(),
+        Some("response")
+    );
+
+    let request_model = get_column_info(&conn, "proxy_request_logs", "request_model");
+    assert_eq!(request_model.r#type, "TEXT");
+    assert_eq!(request_model.notnull, 0);
+
+    assert_eq!(
+        Database::get_user_version(&conn).expect("version after migration"),
+        SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn schema_create_tables_repairs_legacy_proxy_config_singleton_to_per_app() {
     let conn = Connection::open_in_memory().expect("open memory db");
 
     // 模拟测试版 v2：user_version=2，但 proxy_config 仍是单例结构（无 app_type）
@@ -418,6 +496,25 @@ fn migration_from_v3_8_schema_v1_to_current_schema_v3() {
         matches!(pending.as_deref(), Some("true") | Some("1")),
         "skills_ssot_migration_pending should be set after v2->v3 migration"
     );
+    let snapshot: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'skills_ssot_migration_snapshot'",
+            [],
+            |r| r.get(0),
+        )
+        .ok();
+    let snapshot = snapshot.expect("skills migration snapshot should be recorded");
+    let snapshot_rows: serde_json::Value =
+        serde_json::from_str(&snapshot).expect("parse skills migration snapshot");
+    assert!(
+        snapshot_rows
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| {
+                row.get("directory").and_then(|v| v.as_str()) == Some("demo-skill")
+                    && row.get("app_type").and_then(|v| v.as_str()) == Some("claude")
+            })),
+        "skills migration snapshot should preserve legacy app mapping"
+    );
 
     // v3.9+ 新增：proxy_config 三行 seed 必须存在（否则 UI 会查不到默认值）
     let proxy_rows: i64 = conn
@@ -433,7 +530,7 @@ fn migration_from_v3_8_schema_v1_to_current_schema_v3() {
 }
 
 #[test]
-fn dry_run_does_not_write_to_disk() {
+fn schema_dry_run_does_not_write_to_disk() {
     // Create minimal valid config for migration
     let mut apps = HashMap::new();
     apps.insert("claude".to_string(), ProviderManager::default());
@@ -507,7 +604,7 @@ fn dry_run_validates_schema_compatibility() {
 }
 
 #[test]
-fn model_pricing_is_seeded_on_init() {
+fn schema_model_pricing_is_seeded_on_init() {
     let db = Database::memory().expect("create memory db");
 
     let conn = db.conn.lock().expect("lock conn");
@@ -562,5 +659,94 @@ fn model_pricing_is_seeded_on_init() {
         gemini_count > 0,
         "应该包含 Gemini 模型定价，实际数量: {}",
         gemini_count
+    );
+}
+
+#[test]
+fn model_pricing_seed_repairs_known_outdated_builtin_prices() {
+    let db = Database::memory().expect("create memory db");
+
+    {
+        let conn = db.conn.lock().expect("lock conn");
+        conn.execute(
+            "UPDATE model_pricing
+             SET input_cost_per_million = '1.68',
+                 output_cost_per_million = '3.36',
+                 cache_read_cost_per_million = '0.14',
+                 cache_creation_cost_per_million = '0'
+             WHERE model_id = 'deepseek-v4-pro'",
+            [],
+        )
+        .expect("restore old DeepSeek price");
+        conn.execute(
+            "UPDATE model_pricing
+             SET input_cost_per_million = '9',
+                 output_cost_per_million = '9',
+                 cache_read_cost_per_million = '9',
+                 cache_creation_cost_per_million = '0'
+             WHERE model_id = 'glm-5.1'",
+            [],
+        )
+        .expect("set custom GLM price");
+    }
+
+    db.ensure_model_pricing_seeded()
+        .expect("ensure pricing seeded");
+
+    let conn = db.conn.lock().expect("lock conn");
+    let deepseek: (String, String, String) = conn
+        .query_row(
+            "SELECT input_cost_per_million, output_cost_per_million, cache_read_cost_per_million
+             FROM model_pricing WHERE model_id = 'deepseek-v4-pro'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("query DeepSeek price");
+    assert_eq!(
+        deepseek,
+        (
+            "0.435".to_string(),
+            "0.87".to_string(),
+            "0.003625".to_string()
+        )
+    );
+
+    let glm: (String, String, String) = conn
+        .query_row(
+            "SELECT input_cost_per_million, output_cost_per_million, cache_read_cost_per_million
+             FROM model_pricing WHERE model_id = 'glm-5.1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("query GLM price");
+    assert_eq!(glm, ("9".to_string(), "9".to_string(), "9".to_string()));
+}
+
+#[test]
+fn ensure_incremental_auto_vacuum_rebuilds_existing_file_db() {
+    let temp = NamedTempFile::new().expect("create temp db file");
+    let path = temp.path().to_path_buf();
+
+    let conn = Connection::open(&path).expect("open temp db");
+    conn.execute("PRAGMA auto_vacuum = NONE;", [])
+        .expect("set none auto_vacuum");
+    Database::create_tables_on_conn(&conn).expect("create tables");
+
+    assert_eq!(
+        Database::get_auto_vacuum_mode(&conn).expect("auto_vacuum before rebuild"),
+        0,
+        "existing file db should start with NONE auto_vacuum"
+    );
+
+    let rebuilt =
+        Database::ensure_incremental_auto_vacuum_on_conn(&conn).expect("enable incremental mode");
+    assert!(rebuilt, "existing db should require rebuild via VACUUM");
+    drop(conn);
+
+    let reopened = Connection::open(&path).expect("reopen temp db");
+    assert_eq!(
+        Database::get_auto_vacuum_mode(&reopened).expect("auto_vacuum after rebuild"),
+        2,
+        "file db should persist INCREMENTAL auto_vacuum after VACUUM rebuild"
     );
 }

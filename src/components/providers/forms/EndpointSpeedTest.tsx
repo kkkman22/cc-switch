@@ -12,8 +12,11 @@ import type { CustomEndpoint, EndpointCandidate } from "@/types";
 const ENDPOINT_TIMEOUT_SECS: Record<AppId, number> = {
   codex: 12,
   claude: 8,
+  "claude-desktop": 8,
   gemini: 8,
   opencode: 8,
+  openclaw: 8,
+  hermes: 8,
 };
 
 interface TestResult {
@@ -525,7 +528,7 @@ const EndpointSpeedTest: React.FC<EndpointSpeedTestProps> = ({
         <div className="space-y-1.5">
           <div className="flex gap-2">
             <Input
-              type="url"
+              type="text"
               value={customUrl}
               placeholder={t("endpointTest.addEndpointPlaceholder")}
               onChange={(event) => setCustomUrl(event.target.value)}
@@ -605,11 +608,6 @@ const EndpointSpeedTest: React.FC<EndpointSpeedTestProps> = ({
                           }`}
                         >
                           {latency}ms
-                        </div>
-                        <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                          {entry.status
-                            ? t("endpointTest.status", { code: entry.status })
-                            : t("endpointTest.notTested")}
                         </div>
                       </div>
                     ) : isTesting ? (

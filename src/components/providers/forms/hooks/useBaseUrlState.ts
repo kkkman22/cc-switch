@@ -4,9 +4,10 @@ import {
   setCodexBaseUrl as setCodexBaseUrlInConfig,
 } from "@/utils/providerConfigUtils";
 import type { ProviderCategory } from "@/types";
+import type { AppId } from "@/lib/api";
 
 interface UseBaseUrlStateProps {
-  appType: "claude" | "codex" | "gemini" | "opencode";
+  appType: AppId;
   category: ProviderCategory | undefined;
   settingsConfig: string;
   codexConfig?: string;
@@ -31,9 +32,9 @@ export function useBaseUrlState({
   const [geminiBaseUrl, setGeminiBaseUrl] = useState("");
   const isUpdatingRef = useRef(false);
 
-  // 从配置同步到 state（Claude）
+  // 从配置同步到 state（Claude / Claude Desktop）
   useEffect(() => {
-    if (appType !== "claude") return;
+    if (appType !== "claude" && appType !== "claude-desktop") return;
     // 只有 official 类别不显示 Base URL 输入框，其他类别都需要回填
     if (category === "official") return;
     if (isUpdatingRef.current) return;
@@ -59,10 +60,8 @@ export function useBaseUrlState({
     if (!codexConfig) return;
 
     const extracted = extractCodexBaseUrl(codexConfig) || "";
-    if (extracted !== codexBaseUrl) {
-      setCodexBaseUrl(extracted);
-    }
-  }, [appType, category, codexConfig, codexBaseUrl]);
+    setCodexBaseUrl((prev) => (prev === extracted ? prev : extracted));
+  }, [appType, category, codexConfig]);
 
   // 从Claude配置同步到 state（Gemini）
   useEffect(() => {
@@ -115,7 +114,7 @@ export function useBaseUrlState({
       const sanitized = url.trim();
       setCodexBaseUrl(sanitized);
 
-      if (!sanitized || !onCodexConfigChange) {
+      if (!onCodexConfigChange) {
         return;
       }
 

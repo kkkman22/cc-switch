@@ -8,8 +8,6 @@ export function ModeToggle() {
   const { t } = useTranslation();
 
   const toggleTheme = () => {
-    // 如果当前是 dark 或 system（且系统是暗色），切换到 light
-    // 否则切换到 dark
     if (theme === "dark") {
       setTheme("light");
     } else {

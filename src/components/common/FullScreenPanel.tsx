@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { isWindows, isLinux } from "@/lib/platform";
+import {
+  isWindows,
+  isLinux,
+  DRAG_REGION_ATTR,
+  DRAG_REGION_STYLE,
+} from "@/lib/platform";
+import { isTextEditableTarget } from "@/utils/domUtils";
 
 interface FullScreenPanelProps {
   isOpen: boolean;
@@ -37,6 +43,39 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
     };
   }, [isOpen]);
 
+  // ESC 键关闭面板
+  const onCloseRef = React.useRef(onClose);
+
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        // 子组件（例如 Radix 的 Select/Dialog/Dropdown）如果已经消费了 ESC，就不要再关闭整个面板
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        if (isTextEditableTarget(event.target)) {
+          return; // 让输入框自己处理 ESC（比如清空、失焦等）
+        }
+
+        event.stopPropagation(); // 阻止事件继续冒泡到 window，避免触发 App.tsx 的全局监听
+        onCloseRef.current();
+      }
+    };
+
+    // 使用冒泡阶段监听，让子组件（如 Radix UI）优先处理 ESC
+    window.addEventListener("keydown", handleKeyDown, false);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, false);
+    };
+  }, [isOpen]);
+
   return createPortal(
     <AnimatePresence>
       {isOpen && (
@@ -48,24 +87,27 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
           className="fixed inset-0 z-[60] flex flex-col"
           style={{ backgroundColor: "hsl(var(--background))" }}
         >
-          {/* Drag region - match App.tsx */}
-          <div
-            data-tauri-drag-region
-            style={
-              {
-                WebkitAppRegion: "drag",
-                height: DRAG_BAR_HEIGHT,
-              } as React.CSSProperties
-            }
-          />
+          {/* Drag region - match App.tsx. Linux 上 DRAG_BAR_HEIGHT=0，
+              直接跳过整个元素；macOS 保留 28px 拖拽占位。 */}
+          {DRAG_BAR_HEIGHT > 0 && (
+            <div
+              data-tauri-drag-region
+              style={
+                {
+                  WebkitAppRegion: "drag",
+                  height: DRAG_BAR_HEIGHT,
+                } as React.CSSProperties
+              }
+            />
+          )}
 
           {/* Header - match App.tsx */}
           <div
             className="flex-shrink-0 flex items-center"
-            data-tauri-drag-region
+            {...DRAG_REGION_ATTR}
             style={
               {
-                WebkitAppRegion: "drag",
+                ...DRAG_REGION_STYLE,
                 backgroundColor: "hsl(var(--background))",
                 height: HEADER_HEIGHT,
               } as React.CSSProperties
@@ -73,8 +115,8 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
           >
             <div
               className="px-6 w-full flex items-center gap-4"
-              data-tauri-drag-region
-              style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+              {...DRAG_REGION_ATTR}
+              style={{ ...DRAG_REGION_STYLE } as React.CSSProperties}
             >
               <Button
                 type="button"
@@ -94,9 +136,7 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto scroll-overlay">
-            <div className="px-6 py-6 space-y-6 w-full">
-              {children}
-            </div>
+            <div className="px-6 py-6 space-y-6 w-full">{children}</div>
           </div>
 
           {/* Footer */}

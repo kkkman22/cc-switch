@@ -7,9 +7,11 @@ import {
   Minus,
   Play,
   Plus,
+  ShieldAlert,
   Terminal,
   TestTube2,
   Trash2,
+  Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -19,23 +21,28 @@ import type { AppId } from "@/lib/api";
 interface ProviderActionsProps {
   appId?: AppId;
   isCurrent: boolean;
-  /** OpenCode: 是否已添加到配置 */
   isInConfig?: boolean;
   isTesting?: boolean;
   isProxyTakeover?: boolean;
+  isOmo?: boolean;
   onSwitch: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onTest?: () => void;
-  onConfigureUsage: () => void;
+  onConfigureUsage?: () => void;
   onDelete: () => void;
-  /** OpenCode: remove from live config (not delete from database) */
   onRemoveFromConfig?: () => void;
+  onDisableOmo?: () => void;
   onOpenTerminal?: () => void;
-  // 故障转移相关
   isAutoFailoverEnabled?: boolean;
   isInFailoverQueue?: boolean;
   onToggleFailover?: (enabled: boolean) => void;
+  isOfficialBlockedByProxy?: boolean;
+  // Hermes v12+ providers: dict overlay — edit/delete must go through Web UI
+  isReadOnly?: boolean;
+  // OpenClaw: default model
+  isDefaultModel?: boolean;
+  onSetAsDefault?: () => void;
 }
 
 export function ProviderActions({
@@ -44,6 +51,7 @@ export function ProviderActions({
   isInConfig = false,
   isTesting,
   isProxyTakeover = false,
+  isOmo = false,
   onSwitch,
   onEdit,
   onDuplicate,
@@ -51,27 +59,40 @@ export function ProviderActions({
   onConfigureUsage,
   onDelete,
   onRemoveFromConfig,
+  onDisableOmo,
   onOpenTerminal,
-  // 故障转移相关
   isAutoFailoverEnabled = false,
   isInFailoverQueue = false,
   onToggleFailover,
+  isOfficialBlockedByProxy = false,
+  isReadOnly = false,
+  // OpenClaw: default model
+  isDefaultModel = false,
+  onSetAsDefault,
 }: ProviderActionsProps) {
   const { t } = useTranslation();
   const iconButtonClass = "h-8 w-8 p-1";
 
-  // OpenCode 使用累加模式
-  const isOpenCodeMode = appId === "opencode";
+  // 累加模式应用（OpenCode 非 OMO / OpenClaw / Hermes）
+  const isAdditiveMode =
+    (appId === "opencode" && !isOmo) ||
+    appId === "openclaw" ||
+    appId === "hermes";
 
-  // 故障转移模式下的按钮逻辑（OpenCode 不支持故障转移）
-  const isFailoverMode = !isOpenCodeMode && isAutoFailoverEnabled && onToggleFailover;
+  // 故障转移模式下的按钮逻辑（累加模式和 OMO 应用不支持故障转移）
+  const isFailoverMode =
+    !isAdditiveMode && !isOmo && isAutoFailoverEnabled && onToggleFailover;
 
-  // 处理主按钮点击
   const handleMainButtonClick = () => {
-    if (isOpenCodeMode) {
-      // OpenCode 模式：切换配置状态（添加/移除）
+    if (isOmo) {
+      if (isCurrent) {
+        onDisableOmo?.();
+      } else {
+        onSwitch();
+      }
+    } else if (isAdditiveMode) {
+      // 累加模式：切换配置状态（添加/移除）
       if (isInConfig) {
-        // Use onRemoveFromConfig if available, otherwise fall back to onDelete
         if (onRemoveFromConfig) {
           onRemoveFromConfig();
         } else {
@@ -81,24 +102,43 @@ export function ProviderActions({
         onSwitch(); // 添加到配置
       }
     } else if (isFailoverMode) {
-      // 故障转移模式：切换队列状态
       onToggleFailover(!isInFailoverQueue);
     } else {
-      // 普通模式：切换供应商
       onSwitch();
     }
   };
 
-  // 主按钮的状态和样式
   const getMainButtonState = () => {
-    // OpenCode 累加模式
-    if (isOpenCodeMode) {
-      if (isInConfig) {
+    if (isOmo) {
+      if (isCurrent) {
         return {
           disabled: false,
           variant: "secondary" as const,
           className:
+            "bg-gray-200 text-muted-foreground hover:bg-gray-200 hover:text-muted-foreground dark:bg-gray-700 dark:hover:bg-gray-700",
+          icon: <Check className="h-4 w-4" />,
+          text: t("provider.inUse"),
+        };
+      }
+      return {
+        disabled: false,
+        variant: "default" as const,
+        className: "",
+        icon: <Play className="h-4 w-4" />,
+        text: t("provider.enable"),
+      };
+    }
+
+    // 累加模式（OpenCode 非 OMO / OpenClaw）
+    if (isAdditiveMode) {
+      if (isInConfig) {
+        return {
+          disabled: isDefaultModel === true,
+          variant: "secondary" as const,
+          className: cn(
             "bg-orange-100 text-orange-600 hover:bg-orange-200 dark:bg-orange-900/50 dark:text-orange-400 dark:hover:bg-orange-900/70",
+            isDefaultModel && "opacity-40 cursor-not-allowed",
+          ),
           icon: <Minus className="h-4 w-4" />,
           text: t("provider.removeFromConfig", { defaultValue: "移除" }),
         };
@@ -113,7 +153,6 @@ export function ProviderActions({
       };
     }
 
-    // 故障转移模式
     if (isFailoverMode) {
       if (isInFailoverQueue) {
         return {
@@ -135,7 +174,16 @@ export function ProviderActions({
       };
     }
 
-    // 普通模式
+    if (isOfficialBlockedByProxy) {
+      return {
+        disabled: true,
+        variant: "secondary" as const,
+        className: "opacity-40 cursor-not-allowed",
+        icon: <ShieldAlert className="h-4 w-4" />,
+        text: t("provider.blockedByProxy", { defaultValue: "已拦截" }),
+      };
+    }
+
     if (isCurrent) {
       return {
         disabled: true,
@@ -160,11 +208,45 @@ export function ProviderActions({
 
   const buttonState = getMainButtonState();
 
-  // OpenCode 模式下删除按钮始终可用（主按钮"移除"是从 live 配置移除，删除是从数据库删除）
-  const canDelete = isOpenCodeMode ? true : !isCurrent;
+  const canDelete =
+    !isReadOnly && (isOmo || isAdditiveMode ? true : !isCurrent);
+  const readOnlyHint = t("provider.managedByHermesHint", {
+    defaultValue: "由 Hermes 管理，请在 Hermes Web UI 中编辑",
+  });
 
   return (
     <div className="flex items-center gap-1.5">
+      {(appId === "openclaw" || appId === "hermes") &&
+        isInConfig &&
+        onSetAsDefault &&
+        (() => {
+          const activeLabel =
+            appId === "hermes"
+              ? t("provider.inUse", { defaultValue: "已在用" })
+              : t("provider.isDefault", { defaultValue: "当前默认" });
+          const inactiveLabel =
+            appId === "hermes"
+              ? t("provider.enable", { defaultValue: "启用" })
+              : t("provider.setAsDefault", { defaultValue: "设为默认" });
+          return (
+            <Button
+              size="sm"
+              variant={isDefaultModel ? "secondary" : "default"}
+              onClick={isDefaultModel ? undefined : onSetAsDefault}
+              disabled={isDefaultModel}
+              className={cn(
+                "w-fit px-2.5",
+                isDefaultModel
+                  ? "bg-gray-200 text-muted-foreground dark:bg-gray-700 opacity-60 cursor-not-allowed"
+                  : "bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700",
+              )}
+            >
+              <Zap className="h-4 w-4" />
+              {isDefaultModel ? activeLabel : inactiveLabel}
+            </Button>
+          );
+        })()}
+
       <Button
         size="sm"
         variant={buttonState.variant}
@@ -180,9 +262,13 @@ export function ProviderActions({
         <Button
           size="icon"
           variant="ghost"
-          onClick={onEdit}
-          title={t("common.edit")}
-          className={iconButtonClass}
+          onClick={isReadOnly ? undefined : onEdit}
+          disabled={isReadOnly}
+          title={isReadOnly ? readOnlyHint : t("common.edit")}
+          className={cn(
+            iconButtonClass,
+            isReadOnly && "opacity-40 cursor-not-allowed text-muted-foreground",
+          )}
         >
           <Edit className="h-4 w-4" />
         </Button>
@@ -197,29 +283,34 @@ export function ProviderActions({
           <Copy className="h-4 w-4" />
         </Button>
 
-        {onTest && (
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={onTest}
-            disabled={isTesting}
-            title={t("modelTest.testProvider", "测试模型")}
-            className={iconButtonClass}
-          >
-            {isTesting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <TestTube2 className="h-4 w-4" />
-            )}
-          </Button>
-        )}
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onTest || undefined}
+          disabled={isTesting}
+          title={t("modelTest.testProvider", "测试模型")}
+          className={cn(
+            iconButtonClass,
+            !onTest && "opacity-40 cursor-not-allowed text-muted-foreground",
+          )}
+        >
+          {isTesting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <TestTube2 className="h-4 w-4" />
+          )}
+        </Button>
 
         <Button
           size="icon"
           variant="ghost"
-          onClick={onConfigureUsage}
+          onClick={onConfigureUsage || undefined}
           title={t("provider.configureUsage")}
-          className={iconButtonClass}
+          className={cn(
+            iconButtonClass,
+            !onConfigureUsage &&
+              "opacity-40 cursor-not-allowed text-muted-foreground",
+          )}
         >
           <BarChart3 className="h-4 w-4" />
         </Button>
@@ -243,7 +334,7 @@ export function ProviderActions({
           size="icon"
           variant="ghost"
           onClick={canDelete ? onDelete : undefined}
-          title={t("common.delete")}
+          title={isReadOnly ? readOnlyHint : t("common.delete")}
           className={cn(
             iconButtonClass,
             canDelete && "hover:text-red-500 dark:hover:text-red-400",

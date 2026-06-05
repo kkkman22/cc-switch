@@ -11,14 +11,33 @@ import {
 } from "recharts";
 import { useUsageTrends } from "@/lib/query/usage";
 import { Loader2 } from "lucide-react";
+import {
+  fmtInt,
+  fmtUsd,
+  getLocaleFromLanguage,
+  parseFiniteNumber,
+} from "./format";
+import { resolveUsageRange } from "@/lib/usageRange";
+import type { UsageRangeSelection } from "@/types/usage";
 
 interface UsageTrendChartProps {
-  days: number;
+  range: UsageRangeSelection;
+  rangeLabel: string;
+  appType?: string;
+  refreshIntervalMs: number;
 }
 
-export function UsageTrendChart({ days }: UsageTrendChartProps) {
+export function UsageTrendChart({
+  range,
+  rangeLabel,
+  appType,
+  refreshIntervalMs,
+}: UsageTrendChartProps) {
   const { t, i18n } = useTranslation();
-  const { data: trends, isLoading } = useUsageTrends(days);
+  const { startDate, endDate } = resolveUsageRange(range);
+  const { data: trends, isLoading } = useUsageTrends(range, appType, {
+    refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
+  });
 
   if (isLoading) {
     return (
@@ -28,19 +47,17 @@ export function UsageTrendChart({ days }: UsageTrendChartProps) {
     );
   }
 
-  const isToday = days === 1;
-  const dateLocale =
-    i18n.language === "zh"
-      ? "zh-CN"
-      : i18n.language === "ja"
-        ? "ja-JP"
-        : "en-US";
+  const durationSeconds = Math.max(endDate - startDate, 0);
+  const isHourly = durationSeconds <= 24 * 60 * 60;
+  const language = i18n.resolvedLanguage || i18n.language || "en";
+  const dateLocale = getLocaleFromLanguage(language);
   const chartData =
     trends?.map((stat) => {
       const pointDate = new Date(stat.date);
+      const cost = parseFiniteNumber(stat.totalCost);
       return {
         rawDate: stat.date,
-        label: isToday
+        label: isHourly
           ? pointDate.toLocaleString(dateLocale, {
               month: "2-digit",
               day: "2-digit",
@@ -56,7 +73,7 @@ export function UsageTrendChart({ days }: UsageTrendChartProps) {
         outputTokens: stat.totalOutputTokens,
         cacheCreationTokens: stat.totalCacheCreationTokens,
         cacheReadTokens: stat.totalCacheReadTokens,
-        cost: parseFloat(stat.totalCost),
+        cost: cost ?? null,
       };
     }) || [];
 
@@ -79,9 +96,9 @@ export function UsageTrendChart({ days }: UsageTrendChartProps) {
               />
               <span className="font-medium">{entry.name}:</span>
               <span>
-                {entry.name.includes(t("usage.cost", "成本"))
-                  ? `$${typeof entry.value === "number" ? entry.value.toFixed(6) : entry.value}`
-                  : entry.value.toLocaleString()}
+                {entry.dataKey === "cost"
+                  ? fmtUsd(entry.value, 6)
+                  : fmtInt(entry.value, dateLocale)}
               </span>
             </div>
           ))}
@@ -97,13 +114,7 @@ export function UsageTrendChart({ days }: UsageTrendChartProps) {
         <h3 className="text-lg font-semibold">
           {t("usage.trends", "使用趋势")}
         </h3>
-        <p className="text-sm text-muted-foreground">
-          {isToday
-            ? t("usage.rangeToday", "今天 (按小时)")
-            : days === 7
-              ? t("usage.rangeLast7Days", "过去 7 天")
-              : t("usage.rangeLast30Days", "过去 30 天")}
-        </p>
+        <p className="text-sm text-muted-foreground">{rangeLabel}</p>
       </div>
 
       <div className="h-[350px] w-full">

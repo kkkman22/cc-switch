@@ -1,26 +1,3 @@
-//! OpenCode 配置文件读写模块
-//!
-//! 处理 `~/.config/opencode/opencode.json` 配置文件的读写操作。
-//! OpenCode 使用累加式供应商管理，所有供应商配置共存于同一配置文件中。
-//!
-//! ## 配置文件格式
-//!
-//! ```json
-//! {
-//!   "$schema": "https://opencode.ai/config.json",
-//!   "provider": {
-//!     "my-provider": {
-//!       "npm": "@ai-sdk/openai-compatible",
-//!       "options": { "baseURL": "...", "apiKey": "{env:API_KEY}" },
-//!       "models": { "gpt-4o": { "name": "GPT-4o" } }
-//!     }
-//!   },
-//!   "mcp": {
-//!     "my-server": { "type": "local", "command": ["..."] }
-//!   }
-//! }
-//! ```
-
 use crate::config::write_json_file;
 use crate::error::AppError;
 use crate::provider::OpenCodeProviderConfig;
@@ -29,89 +6,111 @@ use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 
-// ============================================================================
-// Path Functions
-// ============================================================================
+const STANDARD_OMO_PLUGIN_PREFIXES: [&str; 2] = ["oh-my-openagent", "oh-my-opencode"];
+const SLIM_OMO_PLUGIN_PREFIXES: [&str; 1] = ["oh-my-opencode-slim"];
 
-/// 获取 OpenCode 配置目录
-///
-/// 默认路径: `~/.config/opencode/`
-/// 可通过 settings.opencode_config_dir 覆盖
+fn matches_plugin_prefix(plugin_name: &str, prefix: &str) -> bool {
+    plugin_name == prefix
+        || plugin_name
+            .strip_prefix(prefix)
+            .map(|suffix| suffix.starts_with('@'))
+            .unwrap_or(false)
+}
+
+fn matches_any_plugin_prefix(plugin_name: &str, prefixes: &[&str]) -> bool {
+    prefixes
+        .iter()
+        .any(|prefix| matches_plugin_prefix(plugin_name, prefix))
+}
+
+fn canonicalize_plugin_name(plugin_name: &str) -> String {
+    if let Some(suffix) = plugin_name.strip_prefix("oh-my-opencode") {
+        if suffix.is_empty() || suffix.starts_with('@') {
+            return format!("oh-my-openagent{suffix}");
+        }
+    }
+    plugin_name.to_string()
+}
+
 pub fn get_opencode_dir() -> PathBuf {
     if let Some(override_dir) = get_opencode_override_dir() {
         return override_dir;
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        // Windows: %APPDATA%\opencode
-        dirs::data_dir()
-            .map(|d| d.join("opencode"))
-            .unwrap_or_else(|| PathBuf::from(".config").join("opencode"))
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Unix: ~/.config/opencode
-        dirs::home_dir()
-            .map(|h| h.join(".config").join("opencode"))
-            .unwrap_or_else(|| PathBuf::from(".config").join("opencode"))
-    }
+    crate::config::get_home_dir()
+        .join(".config")
+        .join("opencode")
 }
 
-/// 获取 OpenCode 配置文件路径
-///
-/// 返回 `~/.config/opencode/opencode.json`
 pub fn get_opencode_config_path() -> PathBuf {
     get_opencode_dir().join("opencode.json")
 }
 
-/// 获取 OpenCode 环境变量文件路径（如果存在）
-///
-/// 返回 `~/.config/opencode/.env`
+/// 获取 OpenCode SQLite 数据库路径
+/// 优先级: OPENCODE_DB 环境变量 > XDG_DATA_HOME > ~/.local/share/opencode
+pub fn get_opencode_db_path() -> PathBuf {
+    // 支持 OPENCODE_DB 环境变量覆盖（忽略空字符串）
+    if let Ok(custom_path) = std::env::var("OPENCODE_DB") {
+        if !custom_path.is_empty() {
+            let path = PathBuf::from(&custom_path);
+            if path.is_absolute() {
+                return path;
+            }
+            // 相对路径基于数据目录
+            return get_opencode_data_dir().join(path);
+        }
+    }
+
+    get_opencode_data_dir().join("opencode.db")
+}
+
+fn get_opencode_data_dir() -> PathBuf {
+    // 尊重 XDG_DATA_HOME（按 XDG 规范，空字符串视为未设置）
+    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
+        if !xdg_data.is_empty() {
+            return PathBuf::from(xdg_data).join("opencode");
+        }
+    }
+
+    // OpenCode 使用 xdg-basedir，不遵守 macOS/Windows 平台约定，
+    // 所有平台默认都落在 ~/.local/share/opencode
+    crate::config::get_home_dir()
+        .join(".local")
+        .join("share")
+        .join("opencode")
+}
+
 #[allow(dead_code)]
 pub fn get_opencode_env_path() -> PathBuf {
     get_opencode_dir().join(".env")
 }
 
-// ============================================================================
-// Core Read/Write Functions
-// ============================================================================
-
-/// 读取 OpenCode 配置文件
-///
-/// 返回完整的配置 JSON 对象
 pub fn read_opencode_config() -> Result<Value, AppError> {
     let path = get_opencode_config_path();
 
     if !path.exists() {
-        // Return empty config with schema
         return Ok(json!({
             "$schema": "https://opencode.ai/config.json"
         }));
     }
 
     let content = std::fs::read_to_string(&path).map_err(|e| AppError::io(&path, e))?;
-    serde_json::from_str(&content).map_err(|e| AppError::json(&path, e))
+    json5::from_str(&content).map_err(|e| {
+        AppError::Config(format!(
+            "Failed to parse OpenCode config: {}: {e}",
+            path.display()
+        ))
+    })
 }
 
-/// 写入 OpenCode 配置文件（原子写入）
-///
-/// 使用临时文件 + 重命名确保原子性
 pub fn write_opencode_config(config: &Value) -> Result<(), AppError> {
     let path = get_opencode_config_path();
-    // 复用统一的原子写入逻辑（兼容 Windows 上目标文件已存在的情况）
     write_json_file(&path, config)?;
 
-    log::debug!("OpenCode config written to {:?}", path);
+    log::debug!("OpenCode config written to {path:?}");
     Ok(())
 }
 
-// ============================================================================
-// Provider Functions (Untyped - for raw JSON operations)
-// ============================================================================
-
-/// 获取所有供应商配置（原始 JSON）
 pub fn get_providers() -> Result<Map<String, Value>, AppError> {
     let config = read_opencode_config()?;
     Ok(config
@@ -121,7 +120,6 @@ pub fn get_providers() -> Result<Map<String, Value>, AppError> {
         .unwrap_or_default())
 }
 
-/// 设置供应商配置（原始 JSON）
 pub fn set_provider(id: &str, config: Value) -> Result<(), AppError> {
     let mut full_config = read_opencode_config()?;
 
@@ -139,7 +137,6 @@ pub fn set_provider(id: &str, config: Value) -> Result<(), AppError> {
     write_opencode_config(&full_config)
 }
 
-/// 删除供应商配置
 pub fn remove_provider(id: &str) -> Result<(), AppError> {
     let mut config = read_opencode_config()?;
 
@@ -150,11 +147,6 @@ pub fn remove_provider(id: &str) -> Result<(), AppError> {
     write_opencode_config(&config)
 }
 
-// ============================================================================
-// Provider Functions (Typed - using OpenCodeProviderConfig)
-// ============================================================================
-
-/// 获取所有供应商配置（类型化）
 pub fn get_typed_providers() -> Result<IndexMap<String, OpenCodeProviderConfig>, AppError> {
     let providers = get_providers()?;
     let mut result = IndexMap::new();
@@ -165,8 +157,7 @@ pub fn get_typed_providers() -> Result<IndexMap<String, OpenCodeProviderConfig>,
                 result.insert(id, config);
             }
             Err(e) => {
-                log::warn!("Failed to parse provider '{}': {}", id, e);
-                // Skip invalid providers but continue
+                log::warn!("Failed to parse provider '{id}': {e}");
             }
         }
     }
@@ -174,17 +165,11 @@ pub fn get_typed_providers() -> Result<IndexMap<String, OpenCodeProviderConfig>,
     Ok(result)
 }
 
-/// 设置供应商配置（类型化）
 pub fn set_typed_provider(id: &str, config: &OpenCodeProviderConfig) -> Result<(), AppError> {
     let value = serde_json::to_value(config).map_err(|e| AppError::JsonSerialize { source: e })?;
     set_provider(id, value)
 }
 
-// ============================================================================
-// MCP Functions
-// ============================================================================
-
-/// 获取所有 MCP 服务器配置
 pub fn get_mcp_servers() -> Result<Map<String, Value>, AppError> {
     let config = read_opencode_config()?;
     Ok(config
@@ -194,7 +179,6 @@ pub fn get_mcp_servers() -> Result<Map<String, Value>, AppError> {
         .unwrap_or_default())
 }
 
-/// 设置 MCP 服务器配置
 pub fn set_mcp_server(id: &str, config: Value) -> Result<(), AppError> {
     let mut full_config = read_opencode_config()?;
 
@@ -209,7 +193,6 @@ pub fn set_mcp_server(id: &str, config: Value) -> Result<(), AppError> {
     write_opencode_config(&full_config)
 }
 
-/// 删除 MCP 服务器配置
 pub fn remove_mcp_server(id: &str) -> Result<(), AppError> {
     let mut config = read_opencode_config()?;
 
@@ -220,3 +203,65 @@ pub fn remove_mcp_server(id: &str) -> Result<(), AppError> {
     write_opencode_config(&config)
 }
 
+pub fn add_plugin(plugin_name: &str) -> Result<(), AppError> {
+    let mut config = read_opencode_config()?;
+    let normalized_plugin_name = canonicalize_plugin_name(plugin_name);
+
+    let plugins = config.get_mut("plugin").and_then(|v| v.as_array_mut());
+
+    match plugins {
+        Some(arr) => {
+            // Mutual exclusion: standard OMO and OMO Slim cannot coexist as plugins
+            if matches_any_plugin_prefix(&normalized_plugin_name, &STANDARD_OMO_PLUGIN_PREFIXES) {
+                arr.retain(|v| {
+                    v.as_str()
+                        .map(|s| {
+                            !matches_any_plugin_prefix(s, &STANDARD_OMO_PLUGIN_PREFIXES)
+                                && !matches_any_plugin_prefix(s, &SLIM_OMO_PLUGIN_PREFIXES)
+                        })
+                        .unwrap_or(true)
+                });
+            } else if matches_any_plugin_prefix(&normalized_plugin_name, &SLIM_OMO_PLUGIN_PREFIXES)
+            {
+                arr.retain(|v| {
+                    v.as_str()
+                        .map(|s| {
+                            !matches_any_plugin_prefix(s, &STANDARD_OMO_PLUGIN_PREFIXES)
+                                && !matches_any_plugin_prefix(s, &SLIM_OMO_PLUGIN_PREFIXES)
+                        })
+                        .unwrap_or(true)
+                });
+            }
+
+            let already_exists = arr
+                .iter()
+                .any(|v| v.as_str() == Some(normalized_plugin_name.as_str()));
+            if !already_exists {
+                arr.push(Value::String(normalized_plugin_name));
+            }
+        }
+        None => {
+            config["plugin"] = json!([normalized_plugin_name]);
+        }
+    }
+
+    write_opencode_config(&config)
+}
+
+pub fn remove_plugins_by_prefixes(prefixes: &[&str]) -> Result<(), AppError> {
+    let mut config = read_opencode_config()?;
+
+    if let Some(arr) = config.get_mut("plugin").and_then(|v| v.as_array_mut()) {
+        arr.retain(|v| {
+            v.as_str()
+                .map(|s| !matches_any_plugin_prefix(s, prefixes))
+                .unwrap_or(true)
+        });
+
+        if arr.is_empty() {
+            config.as_object_mut().map(|obj| obj.remove("plugin"));
+        }
+    }
+
+    write_opencode_config(&config)
+}

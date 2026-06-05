@@ -45,7 +45,7 @@ export function ThemeSettings() {
 
 interface ThemeButtonProps {
   active: boolean;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   icon: React.ComponentType<{ className?: string }>;
   children: React.ReactNode;
 }

@@ -140,7 +140,8 @@ export function FailoverQueueManager({
           </div>
           <p className="text-xs text-muted-foreground">
             {t("proxy.failover.autoSwitchDescription", {
-              defaultValue: "开启后，请求失败时自动切换到队列中的下一个供应商",
+              defaultValue:
+                "开启后将立即切换到队列 P1，并在请求失败时自动切换到队列中的下一个供应商",
             })}
           </p>
         </div>
@@ -181,6 +182,11 @@ export function FailoverQueueManager({
             {availableProviders?.map((provider) => (
               <SelectItem key={provider.id} value={provider.id}>
                 {provider.name}
+                {provider.notes && (
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    ({provider.notes})
+                  </span>
+                )}
               </SelectItem>
             ))}
             {(!availableProviders || availableProviders.length === 0) && (
@@ -277,6 +283,11 @@ function QueueItem({
       <div className="flex-1 min-w-0">
         <span className="text-sm font-medium truncate block">
           {item.providerName}
+          {item.providerNotes && (
+            <span className="ml-1 text-xs text-muted-foreground">
+              ({item.providerNotes})
+            </span>
+          )}
         </span>
       </div>
 
